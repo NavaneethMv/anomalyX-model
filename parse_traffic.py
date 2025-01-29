@@ -60,7 +60,7 @@ def extract_basic_features(packet):
 
     # Flags
     if TCP in packet:
-        flags = []
+        flags = [] # SFR
         if packet[TCP].flags.S: flags.append('S')
         if packet[TCP].flags.A: flags.append('A')
         if packet[TCP].flags.F: flags.append('F')
