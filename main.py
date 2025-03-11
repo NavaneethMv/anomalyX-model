@@ -1,90 +1,82 @@
-# main.py
-import numpy as np
+#!/home/nav/main_project/anomalyX/.env/bin/python
+
+from backend.model.model import NetworkArchitecture
+from backend.network.parse_main import NetworkFeatureExtractor
+from live_data_preprocess import LiveDataPreprocessor
+import time
 import pandas as pd
-from preprocessing import DataPreprocessor
-from model import NetworkArchitecture
-from training import ModelTrainer
+import numpy as np
+import threading
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi_socketio import SocketManager
+import asyncio
 
-def load_data(train_path, test_path):
-    """Load and prepare the NSL-KDD dataset"""
-    columns = [
-        'duration', 'protocol_type', 'service', 'flag', 'src_bytes',
-        'dst_bytes', 'land', 'wrong_fragment', 'urgent', 'hot',
-        'num_failed_logins', 'logged_in', 'num_compromised', 'root_shell',
-        'su_attempted', 'num_root', 'num_file_creations', 'num_shells',
-        'num_access_files', 'num_outbound_cmds', 'is_host_login',
-        'is_guest_login', 'count', 'srv_count', 'serror_rate',
-        'srv_serror_rate', 'rerror_rate', 'srv_rerror_rate',
-        'same_srv_rate', 'diff_srv_rate', 'srv_diff_host_rate',
-        'dst_host_count', 'dst_host_srv_count', 'dst_host_same_srv_rate',
-        'dst_host_diff_srv_rate', 'dst_host_same_src_port_rate',
-        'dst_host_srv_diff_host_rate', 'dst_host_serror_rate',
-        'dst_host_srv_serror_rate', 'dst_host_rerror_rate',
-        'dst_host_srv_rerror_rate', 'attack', 'level'
-    ]
-    
-    # Load datasets
-    df_train = pd.read_csv(train_path, names=columns)
-    df_test = pd.read_csv(test_path, names=columns)
-    
-    # Add attack flag (binary classification)
-    df_train['attack_flag'] = df_train.attack.map(lambda a: 0 if a == 'normal' else 1)
-    df_test['attack_flag'] = df_test.attack.map(lambda a: 0 if a == 'normal' else 1)
-    
-    # Map attack types to attack classes
-    attack_mapping = {
-        'normal': 0,
-        # DoS attacks
-        'apache2': 1, 'back': 1, 'land': 1, 'neptune': 1, 'mailbomb': 1,
-        'pod': 1, 'processtable': 1, 'smurf': 1, 'teardrop': 1, 'udpstorm': 1,
-        'worm': 1,
-        # Probe attacks
-        'ipsweep': 2, 'mscan': 2, 'nmap': 2, 'portsweep': 2, 'saint': 2,
-        'satan': 2,
-        # Privilege escalation attacks
-        'buffer_overflow': 3, 'loadmodule': 3, 'perl': 3, 'ps': 3, 'rootkit': 3,
-        'sqlattack': 3, 'xterm': 3,
-        # Access attacks
-        'ftp_write': 4, 'guess_passwd': 4, 'http_tunnel': 4, 'imap': 4,
-        'multihop': 4, 'named': 4, 'phf': 4, 'sendmail': 4, 'snmpgetattack': 4,
-        'snmpguess': 4, 'spy': 4, 'warezclient': 4, 'warezmaster': 4,
-        'xclock': 4, 'xsnoop': 4
+extractor = NetworkFeatureExtractor(time_window=2, batch_size=10)
+
+preprocessor = LiveDataPreprocessor()
+
+app = FastAPI()
+socket_manager = SocketManager(app=app)
+app.add_middleware(CORSMiddleware, allow_origins=["*"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    extractor.start_capture(interface="s1-eth1", continuous=True)
+    asyncio.create_task(continuous_processing())
+
+
+async def continuous_processing():
+    while True:
+        df_batch = extractor.get_features_batch(timeout=1.0)
+
+        if df_batch is not None and df_batch is not df_batch.empty:
+            try:
+                original_data = df_batch.copy()
+
+                preprocessor.fit(df_batch)
+                processed_data = preprocessor.transform(df_batch)
+
+
+                input_shape = (processed_data.shape[1], ) 
+                num_classes = 5
+                
+                model = NetworkArchitecture.build_cnn_model(input_shape, num_classes)
+                model.load_weights('best_model.h5')
+
+
+                predictions = model.predict(processed_data)
+                original_data['anomaly_score'] = predictions.mean(axis=1)
+                print(original_data['anomaly_score'])
+                original_data['is_anomaly'] = original_data['anomaly_score'] > 0.4
+
+                await socket_manager.emit('anomaly_updates', {
+                    'timestamp': pd.Timestamp.now().isoformat(),
+                    'data': original_data.to_dict('records'),
+                    'anomaly_count': int(original_data['is_anomaly'].sum()),
+                    'total_count': len(original_data)
+                })
+                print("succes")
+                print(f"✓ Processed batch with {len(original_data)} packets, found {original_data['is_anomaly'].sum()} anomalies")
+                
+            except Exception as e:
+                print(f"Error processing batch: {e}")
+        
+        await asyncio.sleep(0.1)
+
+@app.get("/api/status")
+async def check_status():
+    return {
+        "status": "active", 
+        "packets_in_queue": extractor.feature_queue.qsize(),
+        "uptime": "running"
     }
-    
-    df_train['attack_class'] = df_train['attack'].map(attack_mapping)
-    df_test['attack_class'] = df_test['attack'].map(attack_mapping)
-    
-    return df_train, df_test
 
-def main():
-    try:
-        df_train, df_test = load_data('KDDTrain+.txt', 'KDDTest+.txt')
-    except FileNotFoundError:
-        print("Train and Test dataset not found!")
-        return
-    
-    # Initialize data preprocessor
-    preprocessor = DataPreprocessor(df_train, df_test)
-    
-    # Get processed data
-    X_train, X_val, y_train, y_val, X_test, y_test = preprocessor.process()
-    
-    # Build model
-    num_classes = len(np.unique(y_train))
-    input_shape = (X_train.shape[1],)
-    model = NetworkArchitecture.build_cnn_model(input_shape, num_classes)
-    
-    # Initialize trainer
-    trainer = ModelTrainer(model)
-    
-    # Train model
-    history = trainer.train(X_train, y_train, X_val, y_val)
-    
-    # Evaluate and visualize results
-    trainer.evaluate(X_test, y_test)
-    trainer.plot_training_history()
-    
-    return model, history
+@app.on_event("shutdown")
+async def shutdown_event():
+    extractor.stop()
 
 if __name__ == "__main__":
-    model, history = main()
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

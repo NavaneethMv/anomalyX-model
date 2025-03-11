@@ -7,29 +7,29 @@ class NetworkArchitecture:
         """Build and return the CNN model"""
         inputs = layers.Input(shape=input_shape)
         
-        # Reshape input for CNN
+        
         x = layers.Reshape((input_shape[0], 1))(inputs)
         
-        # First CNN block
+        
         x = NetworkArchitecture._create_cnn_block(x, 64)
         
-        # Second CNN block
+        
         x = NetworkArchitecture._create_cnn_block(x, 128)
         
-        # Third CNN block
+        
         x = NetworkArchitecture._create_cnn_block(x, 256, include_pool=False)
         
-        # Dense layers
+        
         x = layers.GlobalAveragePooling1D()(x)
         x = NetworkArchitecture._create_dense_block(x, 256)
         x = NetworkArchitecture._create_dense_block(x, 128)
         
-        # Output layer
+        
         outputs = layers.Dense(num_classes, activation='softmax')(x)
         
         model = models.Model(inputs=inputs, outputs=outputs)
         
-        # Configure optimizer and compile model
+        
         initial_learning_rate = 0.001
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate, decay_steps=1000, decay_rate=0.9

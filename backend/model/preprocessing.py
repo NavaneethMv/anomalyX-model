@@ -9,7 +9,7 @@ import seaborn as sns
 
 class DataPreprocessor:
     def __init__(self, train_df, test_df):
-        self.train_df = train_df.copy()
+        self.train_df = train_df.copy() 
         self.test_df = test_df.copy()
         self.scaler = StandardScaler()
         self.label_encoders = {}
