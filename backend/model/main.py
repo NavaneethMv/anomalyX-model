@@ -1,9 +1,9 @@
 
 import numpy as np
 import pandas as pd
-from model.preprocessing import DataPreprocessor
-from model.model import NetworkArchitecture
-from model.training import ModelTrainer
+from preprocessing import DataPreprocessor
+from model_arc import NetworkArchitecture
+from training import ModelTrainer
 
 def load_data(train_path, test_path):
     """Load and prepare the NSL-KDD dataset"""
@@ -68,7 +68,9 @@ def main():
     
     
     X_train, X_val, y_train, y_val, X_test, y_test = preprocessor.process()
-    
+    preprocessing_components_path = "."
+    preprocessor.save_components(preprocessing_components_path)
+    print("saved the label encoder and data preprocessing")
     
     num_classes = len(np.unique(y_train))
     input_shape = (X_train.shape[1],)

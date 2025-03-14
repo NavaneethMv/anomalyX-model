@@ -1,6 +1,6 @@
 import numpy as np
 from model.preprocessing import DataPreprocessor
-from model.model import NetworkArchitecture
+from backend.model.model_arc import NetworkArchitecture
 from model.main import load_data
 from sklearn.preprocessing import LabelEncoder
 

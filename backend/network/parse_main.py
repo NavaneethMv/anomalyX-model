@@ -134,62 +134,68 @@ class NetworkFeatureExtractor:
 
     def extract_traffic_features(self, connection_key, current_time):
         features = {
-            'count': 0, 
-            'srv_count': 0, 
-            'same_src_bytes_avg': 0, 
-            'same_src_bytes_var': 0,
-            'error_rate': 0,
-            'same_srv_rate': 0,
-            'diff_srv_rate': 0,
+            "count": 0,
+            "srv_count": 0,
+            "same_srv_rate": 0,
+            "diff_srv_rate": 0,
         }
-        
+
         try:
             conn_data = self.connections[connection_key]
 
-            same_host_connections = [t for t in self.conn_history[connection_key] if current_time - t <= self.time_window]
-            features['count'] = len(same_host_connections)
+            same_host_connections = [
+                t
+                for t in self.conn_history[connection_key]
+                if current_time - t <= self.time_window
+            ]
+            features["count"] = len(same_host_connections)
 
-            service = conn_data.get('service', 'other')
-            same_srv_connections = [t for t in self.service_history[service] if current_time - t <= self.time_window]
-            features['srv_count'] = len(same_srv_connections)
+            service = conn_data.get("service", "other")
+            same_srv_connections = [
+                t
+                for t in self.service_history[service]
+                if current_time - t <= self.time_window
+            ]
+            features["srv_count"] = len(same_srv_connections)
 
-            if same_host_connections:
-                byte_sizes = [self.connections[key]['src_bytes'] for key in self.conn_history.keys() if key.startswith(connection_key.split('_')[0])]
-                features['same_src_bytes_avg'] = np.mean(byte_sizes)
-                features['same_src_bytes_var'] = np.var(byte_sizes)
-
-            total_packets = len(conn_data['packets'])
-            error_packets = sum(1 for p in conn_data['packets'] if 'R' in self.get_flag(p) or 'S' in self.get_flag(p))
-            if total_packets > 0:
-                features['error_rate'] = error_packets / total_packets
-            
-            
             total_connections = len(self.conn_history)
-            unique_services = len(set(self.connections[key]['service'] for key in self.conn_history))
+            unique_services = len(
+                set(self.connections[key]["service"] for key in self.conn_history)
+            )
 
-            dst_ip = connection_key.split('_')[2].split(':')[0]
-            current_service = conn_data.get('service', 'other')
+            dst_ip = connection_key.split("_")[2].split(":")[0]
+            current_service = conn_data.get("service", "other")
 
             same_host_connections = []
             for conn_key in self.conn_history.keys():
-                conn_parts = conn_key.split('_')
-                if len(conn_parts) >= 3 and conn_parts[2].split(':')[0] == dst_ip:
-                    conn_times = [t for t in self.conn_history[conn_key] if current_time - t <= self.time_window]
+                conn_parts = conn_key.split("_")
+                if len(conn_parts) >= 3 and conn_parts[2].split(":")[0] == dst_ip:
+                    conn_times = [
+                        t
+                        for t in self.conn_history[conn_key]
+                        if current_time - t <= self.time_window
+                    ]
                     if conn_times:
                         same_host_connections.append(conn_key)
 
             total_same_host = len(same_host_connections)
             if total_same_host > 0:
-                diff_srv_count = sum(1 for key in same_host_connections 
-                                    if self.connections[key].get('service', 'other') != current_service)
-                
-                features['same_srv_rate'] = (total_same_host - diff_srv_count) / total_same_host
-                features['diff_srv_rate'] = diff_srv_count / total_same_host
+                diff_srv_count = sum(
+                    1
+                    for key in same_host_connections
+                    if self.connections[key].get("service", "other") != current_service
+                )
+
+                features["same_srv_rate"] = (
+                    total_same_host - diff_srv_count
+                ) / total_same_host
+                features["diff_srv_rate"] = diff_srv_count / total_same_host
 
         except Exception as e:
             print(f"Error extracting traffic features: {e}")
-        
+
         return features
+
 
     def extract_error_rate_features(self, connection_key, current_time):
         features = {
@@ -541,10 +547,9 @@ class NetworkFeatureExtractor:
 
                 
                 if reverse_key:
-                # Ensure the reverse connection exists before updating dst_bytes
                     if reverse_key not in self.connections:
                         self.connections[reverse_key] = {
-                            'start_time': None,  # Changed from time.time()
+                            'start_time': None,
                             'src_bytes': 0,
                             'dst_bytes': 0,
                             'count': 0,
@@ -553,9 +558,8 @@ class NetworkFeatureExtractor:
                             'flags': set(),
                             'service': 'other'
                         }
-
                     self.connections[reverse_key]['dst_bytes'] += len(packet)
-
+                    
             # Update dst_bytes and duration
             features['dst_bytes'] = conn_data['dst_bytes']
             features['duration'] = current_time - conn_data['start_time'] if conn_data['start_time'] else 0
@@ -630,7 +634,7 @@ class NetworkFeatureExtractor:
         except Exception as e:
             print(f"Error cleaning history: {e}")
 
-    def start_capture(self, interface="s1-eth1", continuous=True):
+    def start_capture(self, interface="s1-eth3", continuous=True):
         """
         Start capturing packets and extracting features
         
@@ -738,8 +742,8 @@ class NetworkFeatureExtractor:
             if col in df.columns:
                 df[col].fillna(0, inplace=True)
                 if col in ['hot', 'logged_in', 'num_failed_logins', 'dst_host_count', 
-                          'dst_host_srv_count', 'num_compromised', 'root_shell', 
-                          'su_attempted', 'num_root', 'num_file_creations', 'num_access_files']:
+                        'dst_host_srv_count', 'num_compromised', 'root_shell', 
+                        'su_attempted', 'num_root', 'num_file_creations', 'num_access_files']:
                     df[col] = df[col].astype(int)
         
         return df

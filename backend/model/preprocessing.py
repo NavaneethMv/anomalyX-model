@@ -6,6 +6,8 @@ from imblearn.over_sampling import SMOTE
 from collections import Counter
 import matplotlib.pyplot as plt
 import seaborn as sns
+import joblib
+import os
 
 class DataPreprocessor:
     def __init__(self, train_df, test_df):
@@ -13,29 +15,56 @@ class DataPreprocessor:
         self.test_df = test_df.copy()
         self.scaler = StandardScaler()
         self.label_encoders = {}
+        self.train_median_values = {}  # Store median values for numerical features
+        self.train_mode_values = {}   # Store mode values for categorical features
+
+    def save_components(self, path):
+        """
+        Save preprocessing components (e.g., scaler, label encoders) to disk.
         
+        Args:
+            path: Directory where components will be saved.
+        """
+        # Create the directory if it doesn't exist
+        os.makedirs(path, exist_ok=True)
+
+        # Save the scaler
+        joblib.dump(self.scaler, f"{path}/scaler.pkl")
+
+        # Save the label encoders
+        joblib.dump(self.label_encoders, f"{path}/label_encoders.pkl")
+
+        # Save median and mode values for imputation
+        joblib.dump(self.train_median_values, f"{path}/train_median_values.pkl")
+        joblib.dump(self.train_mode_values, f"{path}/train_mode_values.pkl")
+
+        print(f"Preprocessing components saved to {path}")
+
+
     def handle_missing_values(self):
         """Handle missing values in both training and test data"""
         # Check for and report missing values
         train_nulls = self.train_df.isnull().sum()
         test_nulls = self.test_df.isnull().sum()
-        
+
         print("Missing values in training data:")
         print(train_nulls[train_nulls > 0])
         print("\nMissing values in test data:")
         print(test_nulls[test_nulls > 0])
-        
+
         # For numerical columns, fill NaN with median
         numeric_columns = self.train_df.select_dtypes(include=[np.number]).columns
         for col in numeric_columns:
             median_value = self.train_df[col].median()
+            self.train_median_values[col] = median_value  # Store median value
             self.train_df[col].fillna(median_value, inplace=True)
             self.test_df[col].fillna(median_value, inplace=True)
-        
+
         # For categorical columns, fill NaN with mode
         categorical_columns = self.train_df.select_dtypes(include=['object']).columns
         for col in categorical_columns:
-            mode_value = self.train_df[col].mode()[0] # mod val
+            mode_value = self.train_df[col].mode()[0]
+            self.train_mode_values[col] = mode_value  # Store mode value
             self.train_df[col].fillna(mode_value, inplace=True)
             self.test_df[col].fillna(mode_value, inplace=True)
             
